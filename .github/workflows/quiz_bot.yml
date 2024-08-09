@@ -26,6 +26,6 @@ jobs:
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         DEFAULT_CHANNEL: ${{ secrets.DEFAULT_CHANNEL }}
-        mongo_uri: ${{ secrets.MONGO_URI }}
+        MONGO_URI: ${{ secrets.MONGO_URI }}
       run: |
         python main.py
