@@ -1,7 +1,8 @@
 import os
 import pymongo
 import asyncio
-from telegram import Bot, ParseMode
+from telegram import Bot
+from telegram.constants import ParseMode
 from pymongo import MongoClient
 import random
 import math
