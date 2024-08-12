@@ -1,7 +1,7 @@
 import os
 import pymongo
 import asyncio
-from telegram import Bot
+from telegram import Bot, ParseMode
 from pymongo import MongoClient
 import random
 import math
@@ -9,7 +9,6 @@ import math
 # Read environment variables
 mongo_uri = os.getenv('MONGO_URI')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-
 # Default channel
 DEFAULT_CHANNEL = os.getenv('DEFAULT_CHANNEL')
 
@@ -30,6 +29,27 @@ def fetch_questions_from_collection(database_name, collection_name, num_question
 def get_correct_option_index(answer_key):
     option_mapping = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
     return option_mapping.get(answer_key.lower(), None)
+
+async def send_intro_message(collection_name, num_questions):
+    intro_message = (
+        f"🎯 *આજની કવિઝ* 🎯\n\n"
+        f"📚 વિષય: *{collection_name}*\n"
+        f"🔢 પ્ર્શ્નોની સંખ્યા: *{num_questions}*\n\n"
+        f"🕐 અમારા ટેલીગ્રામ ચેનલમાં દરરોજ બપોરે *1 વાગ્યે* અને રાત્રે *9 વાગ્યે* "
+        f"*{num_questions}* ની કવિઝ મુકવામાં આવે છે.\n\n"
+        f"🔗 *Join* : @CurrentAdda\n\n"
+        f"🏆 તૈયાર રહો! કવિઝ શરૂ થવાની તૈયારીમાં છે... 🚀"
+    )
+    
+    try:
+        await bot.send_message(
+            chat_id=DEFAULT_CHANNEL,
+            text=intro_message,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        print("Intro message sent successfully")
+    except Exception as e:
+        print(f"Error sending intro message: {e}")
 
 async def send_quiz_to_channel(question, options, correct_option_index, explanation):
     question_text = f"{question}\n[@CurrentAdda]"
@@ -70,6 +90,10 @@ async def main():
     print(f"Fetching {num_questions} random questions from collection '{selected_collection}'...")
     await asyncio.sleep(1)  # Delay before fetching questions
     questions = fetch_questions_from_collection('MasterQuestions', selected_collection, num_questions)
+    
+    # Send intro message before the first poll
+    await send_intro_message(selected_collection, num_questions)
+    await asyncio.sleep(5)  # Wait for 5 seconds before starting the quiz
     
     for question in questions:
         question_text = question.get('Question', 'No question text')
