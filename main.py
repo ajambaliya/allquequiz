@@ -105,7 +105,7 @@ async def main():
         
         if correct_option_index is not None:
             await send_quiz_to_channel(question_text, options, correct_option_index, explanation)
-            await asyncio.sleep(1)  # Delay between sending each question
+            await asyncio.sleep(3)  # Delay between sending each question
         else:
             print(f"Skipping question due to invalid answer format: {question}")
 
