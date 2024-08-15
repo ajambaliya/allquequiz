@@ -1,2 +1,11 @@
+requests
+beautifulsoup4
 pymongo
 python-telegram-bot
+pytz
+docx2pdf
+python-dotenv
+python-docx
+pypandoc
+pdfkit
+odfpy
