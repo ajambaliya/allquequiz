@@ -1,11 +1,6 @@
-requests
-beautifulsoup4
-pymongo
-python-telegram-bot
-pytz
-docx2pdf
-python-dotenv
-python-docx
-pypandoc
-pdfkit
-odfpy
+python-telegram-bot==20.3
+pymongo==4.3.3
+requests==2.28.2
+python-docx==0.8.11
+Pillow==9.5.0
+python-dotenv==1.0.0
