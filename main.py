@@ -94,9 +94,9 @@ def get_overall_quiz_number():
         collection.insert_one({'counter_name': 'overall_quiz', 'count': 1})
         return 1
 
-def translate_to_gujarati(text):
+def translate_to_english(text):
     try:
-        translator = GoogleTranslator(source='auto', target='gujarati')
+        translator = GoogleTranslator(source='auto', target='english')
         return translator.translate(text)
     except Exception as e:
         logger.error(f"Translation error: {e}")
@@ -265,7 +265,7 @@ def convert_docx_to_pdf(docx_file, pdf_path):
         raise
 
 async def send_pdf_to_channel(pdf_path, caption, collection_name, quiz_number, overall_quiz_number):
-    gujarati_collection_name = translate_to_gujarati(collection_name)
+    english_collection_name = translate_to_english(collection_name)
     
     attractive_caption = (
         f"🎉 *{collection_name} Quiz {quiz_number} (Overall Quiz {overall_quiz_number}) is now available!* 🎉\n\n"
@@ -273,7 +273,7 @@ async def send_pdf_to_channel(pdf_path, caption, collection_name, quiz_number, o
         f"🧠 Challenge yourself and learn something new!\n\n"
         f"📥 Download the PDF and start quizzing.\n"
         f"🔗 Don't forget to join @CurrentAdda for daily updates!\n\n"
-        f"#Quiz #{gujarati_collection_name.replace(' ', '')} #Quiz{overall_quiz_number}"
+        f"#Quiz #{english_collection_name.replace(' ', '')} #Quiz{overall_quiz_number}"
     )
     
     try:
@@ -323,12 +323,12 @@ async def main():
     template_io = download_template(TEMPLATE_URL)
     updated_doc_path = update_document_with_content(template_io, intro_message, questions, selected_collection, quiz_number)
     
-    gujarati_collection_name = translate_to_gujarati(selected_collection)
-    gujarati_collection_name = translate_to_gujarati(selected_collection)
-    pdf_path = os.path.join(tempfile.gettempdir(), f'{gujarati_collection_name} Quiz {quiz_number} - Overall {overall_quiz_number}.pdf')
+    english_collection_name = translate_to_english(selected_collection)
+    pdf_path = os.path.join(tempfile.gettempdir(), f'{english_collection_name} Quiz {quiz_number} - Overall {overall_quiz_number}.pdf')
     
     convert_docx_to_pdf(updated_doc_path, pdf_path)
     await send_pdf_to_channel(pdf_path, f"{selected_collection} Quiz {quiz_number} - Overall {overall_quiz_number} - {datetime.now().strftime('%d %B %Y')}", selected_collection, quiz_number, overall_quiz_number)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
