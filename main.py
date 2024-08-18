@@ -15,14 +15,14 @@ import io
 import subprocess
 import tempfile
 import math
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize the translator
-translator = Translator()
+translator = GoogleTranslator()
 
 # Read environment variables
 mongo_uri = os.getenv('MONGO_CONNECTION_STRING')
@@ -233,91 +233,53 @@ def convert_docx_to_pdf(docx_file, pdf_path):
             logger.error(f"Conversion failed, PDF not found at {pdf_temp_path}")
     except subprocess.CalledProcessError as e:
         logger.error(f"Error converting DOCX to PDF: {e}")
-        raise
 
-async def send_pdf_to_channel(pdf_file, caption):
+async def send_pdf_to_channel(pdf_path, message_text):
     try:
-        with open(pdf_file, 'rb') as pdf:
+        with open(pdf_path, 'rb') as pdf_file:
             await bot.send_document(
                 chat_id=DEFAULT_CHANNEL,
-                document=pdf,
-                filename=os.path.basename(pdf_file),
-                caption=caption,
+                document=pdf_file,
+                caption=message_text,
                 parse_mode=ParseMode.MARKDOWN
             )
-        logger.info(f"PDF sent successfully: {pdf_file}")
+            logger.info(f"PDF sent successfully to channel.")
     except TelegramError as e:
         logger.error(f"Error sending PDF: {e}")
 
-def save_selected_collection_to_db(collection_name):
-    db = client[SELECTED_COLLECTIONS_DB]
-    collection = db[SELECTED_COLLECTIONS_COLLECTION]
-    collection.insert_one({
-        'collection_name': collection_name,
-        'selected_at': datetime.now()
-    })
-
-def get_unselected_collection(database_name):
-    db = client[SELECTED_COLLECTIONS_DB]
-    collection = db[SELECTED_COLLECTIONS_COLLECTION]
-    
-    all_collections = fetch_collections(database_name)
-    selected_collections = collection.distinct('collection_name')
-    
-    unselected_collections = [c for c in all_collections if c not in selected_collections]
-    
-    if unselected_collections:
-        return random.choice(unselected_collections)
-    else:
-        # If all collections are selected, reset the database
-        collection.delete_many({})
-        return random.choice(all_collections)
-
 async def main():
-    # Configuration
-    database_name = "indiabixurl"
-    num_questions = 10
-    
-    collection_name = get_unselected_collection(database_name)
-    save_selected_collection_to_db(collection_name)
-    
-    questions = fetch_questions_from_collection(database_name, collection_name, num_questions)
-    
+    database_name = 'YourDatabaseName'  # Replace with your database name
+    collection_name = 'YourCollectionName'  # Replace with your collection name
+    num_questions = 5  # Adjust as needed
     quiz_number = get_quiz_number(collection_name)
     overall_quiz_number = get_overall_quiz_number()
-    
-    await send_intro_message(collection_name, num_questions, quiz_number, overall_quiz_number)
-    
-    tasks = []
-    
-    for q in questions:
-        question = q.get('Question', 'No question text')
-        options = [
-            q.get('Option A', 'No option'),
-            q.get('Option B', 'No option'),
-            q.get('Option C', 'No option'),
-            q.get('Option D', 'No option')
-        ]
-        correct_option_index = get_correct_option_index(q.get('Answer', 'a'))
-        explanation = q.get('Explanation', None)
-        
-        tasks.append(send_quiz_to_channel(question, options, correct_option_index, explanation))
-    
-    await asyncio.gather(*tasks)
-    
+
+    # Fetch questions
+    questions = fetch_questions_from_collection(database_name, collection_name, num_questions)
+
+    # Create the intro message
     intro_message = (
-        f"Day {get_quiz_day()} - {collection_name} Quiz {quiz_number}\n\n"
-        f"Join @CurrentAdda for daily quizzes!"
+        f"🎯 *Today's Quiz - Day {get_quiz_day()} - {collection_name} Quiz {quiz_number}* 🎯\n\n"
+        f"📚 Topic: *{collection_name}*\n"
+        f"🔢 Number of Questions: *{num_questions}*\n"
+        f"🔢 Quiz Number: *{overall_quiz_number}*\n\n"
+        f"🕐 Daily quizzes are posted in our Telegram channel at *1 PM* and *9 PM* "
+        f"with *{num_questions}* questions.\n\n"
+        f"🔗 *Join* : @CurrentAdda\n\n"
+        f"🏆 Get ready! The quiz is about to start... 🚀"
     )
-    
+
+    # Send the intro message
+    await send_intro_message(collection_name, num_questions, quiz_number, overall_quiz_number)
+
+    # Prepare document and convert to PDF
     doc_io = download_template(TEMPLATE_URL)
-    updated_docx_path = update_document_with_content(doc_io, intro_message, questions, collection_name, quiz_number)
-    
-    pdf_path = os.path.join(tempfile.gettempdir(), f'{collection_name}_quiz_{quiz_number}.pdf')
-    convert_docx_to_pdf(updated_docx_path, pdf_path)
-    
-    pdf_caption = f"📄 Day {get_quiz_day()} Quiz PDF - {collection_name} Quiz {quiz_number} 📄\n\n"
-    await send_pdf_to_channel(pdf_path, pdf_caption)
+    doc_path = update_document_with_content(doc_io, intro_message, questions, collection_name, quiz_number)
+    pdf_path = os.path.join(tempfile.gettempdir(), f'{collection_name} Quiz {quiz_number}.pdf')
+    convert_docx_to_pdf(doc_path, pdf_path)
+
+    # Send the PDF to the channel
+    await send_pdf_to_channel(pdf_path, intro_message)
 
 if __name__ == "__main__":
     asyncio.run(main())
