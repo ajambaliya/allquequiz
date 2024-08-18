@@ -21,9 +21,6 @@ from deep_translator import GoogleTranslator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize the translator
-translator = GoogleTranslator()
-
 # Read environment variables
 mongo_uri = os.getenv('MONGO_CONNECTION_STRING')
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -39,10 +36,7 @@ logger.info(f"Mongo URI: {mongo_uri}")
 client = MongoClient(mongo_uri)
 bot = Bot(token=BOT_TOKEN)
 
-# MongoDB collection for tracking selected collections
-SELECTED_COLLECTIONS_DB = 'QuizTracker'
-SELECTED_COLLECTIONS_COLLECTION = 'SelectedCollections'
-
+# Define functions for the bot
 def fetch_collections(database_name):
     db = client[database_name]
     return db.list_collection_names()
@@ -99,6 +93,37 @@ def get_overall_quiz_number():
     else:
         collection.insert_one({'counter_name': 'overall_quiz', 'count': 1})
         return 1
+
+def translate_to_gujarati(text):
+    try:
+        translator = GoogleTranslator(source='auto', target='gujarati')
+        return translator.translate(text)
+    except Exception as e:
+        logger.error(f"Translation error: {e}")
+        return text  # Return original text if translation fails
+
+def select_collection():
+    db = client['QuizTracking']
+    tracking_collection = db['UsedCollections']
+    all_collections = fetch_collections('MasterQuestions')
+    
+    # Check if all collections have been used
+    used_collections = list(tracking_collection.find({}, {'collection_name': 1, '_id': 0}))
+    used_collection_names = [doc['collection_name'] for doc in used_collections]
+    
+    if len(used_collection_names) == len(all_collections):
+        # Reset if all collections have been used
+        tracking_collection.delete_many({})
+        used_collection_names = []
+    
+    # Select an unused collection
+    unused_collections = [c for c in all_collections if c not in used_collection_names]
+    selected_collection = random.choice(unused_collections)
+    
+    # Mark the selected collection as used
+    tracking_collection.insert_one({'collection_name': selected_collection})
+    
+    return selected_collection
 
 async def send_intro_message(collection_name, num_questions, quiz_number, overall_quiz_number):
     day = get_quiz_day()
@@ -230,56 +255,80 @@ def convert_docx_to_pdf(docx_file, pdf_path):
             os.rename(pdf_temp_path, pdf_path)
             logger.info(f"Successfully converted DOCX to PDF: {pdf_path}")
         else:
-            logger.error(f"Conversion failed, PDF not found at {pdf_temp_path}")
+            raise FileNotFoundError(f"PDF file not found at expected location: {pdf_temp_path}")
     except subprocess.CalledProcessError as e:
+        logger.error(f"LibreOffice conversion failed: {e}")
+        logger.error(f"LibreOffice stderr: {e.stderr}")
+        raise
+    except Exception as e:
         logger.error(f"Error converting DOCX to PDF: {e}")
+        raise
 
-async def send_pdf_to_channel(pdf_path, message_text):
+async def send_pdf_to_channel(pdf_path, caption, collection_name, quiz_number, overall_quiz_number):
+    gujarati_collection_name = translate_to_gujarati(collection_name)
+    
+    attractive_caption = (
+        f"🎉 *{collection_name} Quiz {quiz_number} (Overall Quiz {overall_quiz_number}) is now available!* 🎉\n\n"
+        f"📚 Boost your knowledge with our latest quiz.\n"
+        f"🧠 Challenge yourself and learn something new!\n\n"
+        f"📥 Download the PDF and start quizzing.\n"
+        f"🔗 Don't forget to join @CurrentAdda for daily updates!\n\n"
+        f"#Quiz #{gujarati_collection_name.replace(' ', '')} #Quiz{overall_quiz_number}"
+    )
+    
     try:
         with open(pdf_path, 'rb') as pdf_file:
             await bot.send_document(
                 chat_id=DEFAULT_CHANNEL,
                 document=pdf_file,
-                caption=message_text,
+                caption=attractive_caption,
                 parse_mode=ParseMode.MARKDOWN
             )
-            logger.info(f"PDF sent successfully to channel.")
+        logger.info(f"PDF sent successfully")
     except TelegramError as e:
-        logger.error(f"Error sending PDF: {e}")
+        logger.error(f"Failed to send PDF: {e.message}")
 
 async def main():
-    database_name = 'YourDatabaseName'  # Replace with your database name
-    collection_name = 'YourCollectionName'  # Replace with your collection name
-    num_questions = 5  # Adjust as needed
-    quiz_number = get_quiz_number(collection_name)
+    selected_collection = select_collection()
+    num_questions = 10
+    questions = fetch_questions_from_collection('MasterQuestions', selected_collection, num_questions)
+    
+    quiz_number = get_quiz_number(selected_collection)
     overall_quiz_number = get_overall_quiz_number()
-
-    # Fetch questions
-    questions = fetch_questions_from_collection(database_name, collection_name, num_questions)
-
-    # Create the intro message
+    
     intro_message = (
-        f"🎯 *Today's Quiz - Day {get_quiz_day()} - {collection_name} Quiz {quiz_number}* 🎯\n\n"
-        f"📚 Topic: *{collection_name}*\n"
-        f"🔢 Number of Questions: *{num_questions}*\n"
-        f"🔢 Quiz Number: *{overall_quiz_number}*\n\n"
-        f"🕐 Daily quizzes are posted in our Telegram channel at *1 PM* and *9 PM* "
-        f"with *{num_questions}* questions.\n\n"
-        f"🔗 *Join* : @CurrentAdda\n\n"
-        f"🏆 Get ready! The quiz is about to start... 🚀"
+        f"🎯 *Day {get_quiz_day()} - {selected_collection} Quiz {quiz_number}* 🎯\n\n"
+        f"📚 *Quiz Collection*: {selected_collection}\n"
+        f"🔢 *Number of Questions*: {num_questions}\n"
+        f"🔢 *Overall Quiz Number*: {overall_quiz_number}\n\n"
+        f"🕐 Daily quizzes are posted at *1 PM* and *9 PM*.\n\n"
+        f"🔗 *Join*: @CurrentAdda\n\n"
+        f"🏆 Get ready for your quiz! 🚀"
     )
-
-    # Send the intro message
-    await send_intro_message(collection_name, num_questions, quiz_number, overall_quiz_number)
-
-    # Prepare document and convert to PDF
-    doc_io = download_template(TEMPLATE_URL)
-    doc_path = update_document_with_content(doc_io, intro_message, questions, collection_name, quiz_number)
-    pdf_path = os.path.join(tempfile.gettempdir(), f'{collection_name} Quiz {quiz_number}.pdf')
-    convert_docx_to_pdf(doc_path, pdf_path)
-
-    # Send the PDF to the channel
-    await send_pdf_to_channel(pdf_path, intro_message)
+    
+    await send_intro_message(selected_collection, num_questions, quiz_number, overall_quiz_number)
+    await asyncio.sleep(5)
+    
+    for question in questions:
+        question_text = question.get('Question', 'No question text')
+        options = [str(question.get('Option A', 'No option')), str(question.get('Option B', 'No option')), 
+                   str(question.get('Option C', 'No option')), str(question.get('Option D', 'No option'))]
+        correct_option_index = get_correct_option_index(question.get('Answer', 'a'))
+        explanation = question.get('Explanation', None)
+        
+        if correct_option_index is not None:
+            await send_quiz_to_channel(question_text, options, correct_option_index, explanation)
+            await asyncio.sleep(3)
+    
+    template_io = download_template(TEMPLATE_URL)
+    updated_doc_path = update_document_with_content(template_io, intro_message, questions, selected_collection, quiz_number)
+    
+    gujarati_collection_name = translate_to_gujarati(selected_collection)
+    gujarati_collection_name = translate_to_gujarati(selected_collection)
+    pdf_path = os.path.join(tempfile.gettempdir(), f'{gujarati_collection_name} Quiz {quiz_number} - Overall {overall_quiz_number}.pdf')
+    
+    convert_docx_to_pdf(updated_doc_path, pdf_path)
+    await send_pdf_to_channel(pdf_path, f"{selected_collection} Quiz {quiz_number} - Overall {overall_quiz_number} - {datetime.now().strftime('%d %B %Y')}", selected_collection, quiz_number, overall_quiz_number)
 
 if __name__ == "__main__":
     asyncio.run(main())
